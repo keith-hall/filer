@@ -28,7 +28,7 @@ pip install -r requirements.txt
 
 Run the application:
 ```bash
-python -m filer.main
+python main.py
 ```
 
 ### Keyboard Shortcuts

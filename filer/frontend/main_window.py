@@ -127,7 +127,7 @@ class MainWindow(QMainWindow):
         self.command_palette.add_command(
             "Go to Root",
             "Navigate to root directory",
-            lambda: self.navigate_to(Path("/"))
+            lambda: self.navigate_to(Path.home().anchor if hasattr(Path.home(), 'anchor') else Path("/"))
         )
         self.command_palette.add_command(
             "Focus Left Pane",

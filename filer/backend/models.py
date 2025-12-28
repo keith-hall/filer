@@ -7,7 +7,7 @@ from PyQt6.QtCore import QAbstractTableModel, Qt, QModelIndex, QVariant
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication, QStyle
 
-from ..backend.filesystem import FileSystemBackend, FileEntry
+from .filesystem import FileSystemBackend, FileEntry
 
 
 class FileListModel(QAbstractTableModel):
