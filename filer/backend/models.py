@@ -1,6 +1,8 @@
 """
 Qt models for file system data representation.
 """
+import bisect
+import logging
 from pathlib import Path
 from typing import Optional, List, Generator
 from PyQt6.QtCore import QAbstractTableModel, Qt, QModelIndex, QVariant, QTimer, pyqtSignal
@@ -8,6 +10,8 @@ from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication, QStyle
 
 from .filesystem import FileSystemBackend, FileEntry
+
+logger = logging.getLogger(__name__)
 
 
 class FileListModel(QAbstractTableModel):
@@ -91,8 +95,9 @@ class FileListModel(QAbstractTableModel):
             return
         except Exception as e:
             # Handle any errors during loading
+            logger.error(f"Error during directory loading: {e}", exc_info=True)
             self._cancel_loading()
-            print(f"Error during directory loading: {e}")
+            self.loading_complete.emit()
             return
         
         # Insert new entries in sorted order
@@ -115,25 +120,24 @@ class FileListModel(QAbstractTableModel):
         Find the position to insert an entry to maintain sorted order.
         Sort key: directories first, then by name (case-insensitive).
         """
-        # Use binary search for efficiency
-        import bisect
+        # Helper class for bisect to work with our sort key
+        class KeyWrapper:
+            def __init__(self, iterable, key):
+                self.it = iterable
+                self.key = key
+            
+            def __getitem__(self, i):
+                return self.key(self.it[i])
+            
+            def __len__(self):
+                return len(self.it)
         
-        # Create a key for sorting
+        # Create a key for the entry we're inserting
         entry_key = (not entry.is_dir, entry.name.lower())
         
-        # Find position using bisect
-        left, right = 0, len(self.entries)
-        while left < right:
-            mid = (left + right) // 2
-            mid_entry = self.entries[mid]
-            mid_key = (not mid_entry.is_dir, mid_entry.name.lower())
-            
-            if mid_key < entry_key:
-                left = mid + 1
-            else:
-                right = mid
-        
-        return left
+        # Use bisect to find the insertion position
+        wrapped = KeyWrapper(self.entries, lambda e: (not e.is_dir, e.name.lower()))
+        return bisect.bisect_left(wrapped, entry_key)
     
     def _finish_loading(self):
         """Finish the loading process."""
