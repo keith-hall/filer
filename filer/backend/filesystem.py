@@ -4,7 +4,7 @@ Provides clean abstraction for file system operations.
 """
 import os
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Generator
 from datetime import datetime
 
 
@@ -99,6 +99,35 @@ class FileSystemBackend:
             entries.sort(key=lambda e: (not e.is_dir, e.name.lower()))
             return entries
             
+        except (OSError, PermissionError) as e:
+            raise PermissionError(f"Cannot access directory: {target_path}") from e
+    
+    def list_directory_streaming(self, path: Optional[Path] = None) -> Generator[FileEntry, None, None]:
+        """
+        List contents of a directory as a stream (generator).
+        
+        This yields entries as they are discovered, allowing for progressive
+        display in the UI without blocking on large directories.
+        
+        Args:
+            path: Directory path to list. Uses current_path if None.
+            
+        Yields:
+            FileEntry objects as they are discovered.
+            
+        Raises:
+            PermissionError: If the directory cannot be accessed.
+        """
+        target_path = path or self.current_path
+        
+        try:
+            for item in target_path.iterdir():
+                try:
+                    yield FileEntry(item)
+                except (OSError, PermissionError):
+                    # Skip files we can't access
+                    pass
+                    
         except (OSError, PermissionError) as e:
             raise PermissionError(f"Cannot access directory: {target_path}") from e
     

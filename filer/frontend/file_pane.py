@@ -75,10 +75,13 @@ class FilePane(QWidget):
         self.status_label = QLabel()
         self.update_status()
         layout.addWidget(self.status_label)
+        
+        # Connect loading complete signal
+        self.model.loading_complete.connect(self.update_status)
     
     def refresh(self):
-        """Refresh the file list."""
-        self.model.refresh()
+        """Refresh the file list using streaming mode."""
+        self.model.refresh_streaming()
         self.path_edit.setText(str(self.backend.get_current_path()))
         self.update_status()
         self.directory_changed.emit(self.backend.get_current_path())
