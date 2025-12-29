@@ -111,15 +111,9 @@ class FileSystemWatcher(QObject, FileSystemEventHandler):
     def on_moved(self, event: FileSystemEvent):
         """Handle file/directory move/rename events."""
         from_path = Path(event.src_path)
-        to_path = Path(event.dest_path) if hasattr(event, 'dest_path') else None
-        
-        if to_path:
-            logger.debug(f"File moved: {from_path} -> {to_path}")
-            self.file_moved.emit(from_path, to_path)
-        else:
-            # Treat as deletion if destination is unknown
-            logger.debug(f"File moved/deleted: {from_path}")
-            self.file_removed.emit(from_path)
+        to_path = Path(event.dest_path)
+        logger.debug(f"File moved: {from_path} -> {to_path}")
+        self.file_moved.emit(from_path, to_path)
     
     def __del__(self):
         """Cleanup when object is destroyed."""
