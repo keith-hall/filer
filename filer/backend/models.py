@@ -1,13 +1,17 @@
 """
 Qt models for file system data representation.
 """
+import bisect
+import logging
 from pathlib import Path
-from typing import Optional, List
-from PyQt6.QtCore import QAbstractTableModel, Qt, QModelIndex, QVariant
+from typing import Optional, List, Generator
+from PyQt6.QtCore import QAbstractTableModel, Qt, QModelIndex, QVariant, QTimer, pyqtSignal
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication, QStyle
 
 from .filesystem import FileSystemBackend, FileEntry
+
+logger = logging.getLogger(__name__)
 
 
 class FileListModel(QAbstractTableModel):
@@ -21,11 +25,17 @@ class FileListModel(QAbstractTableModel):
     
     COLUMN_HEADERS = ["Name", "Size", "Type", "Modified"]
     
+    # Signal emitted when loading is complete
+    loading_complete = pyqtSignal()
+    
     def __init__(self, backend: FileSystemBackend, parent=None):
         super().__init__(parent)
         self.backend = backend
         self.entries: List[FileEntry] = []
-        self.refresh()
+        self._loading_generator: Optional[Generator[FileEntry, None, None]] = None
+        self._loading_timer: Optional[QTimer] = None
+        self._temp_entries: List[FileEntry] = []
+        self.refresh_streaming()  # Use streaming by default
     
     def refresh(self):
         """Refresh the file list from backend."""
@@ -35,6 +45,118 @@ class FileListModel(QAbstractTableModel):
         except PermissionError:
             self.entries = []
         self.endResetModel()
+    
+    def refresh_streaming(self):
+        """
+        Refresh the file list using streaming mode.
+        
+        This method initiates a streaming refresh that progressively adds
+        entries to the model as they are discovered, providing better
+        responsiveness for large directories. Entries are inserted in
+        sorted order as they arrive.
+        """
+        # Cancel any ongoing loading
+        self._cancel_loading()
+        
+        # Clear current entries
+        self.beginResetModel()
+        self.entries = []
+        self._temp_entries = []
+        self.endResetModel()
+        
+        # Start streaming
+        try:
+            self._loading_generator = self.backend.list_directory_streaming()
+            self._loading_timer = QTimer()
+            self._loading_timer.timeout.connect(self._load_next_batch)
+            self._loading_timer.start(0)  # Process as fast as possible
+        except PermissionError:
+            self.entries = []
+            self.loading_complete.emit()
+    
+    def _load_next_batch(self):
+        """Load next batch of entries from the generator."""
+        if self._loading_generator is None:
+            return
+        
+        # Process multiple entries per timer tick for better performance
+        batch_size = 50  # Adjust based on performance needs
+        
+        new_entries = []
+        try:
+            for _ in range(batch_size):
+                entry = next(self._loading_generator)
+                new_entries.append(entry)
+        except StopIteration:
+            # Finished loading all entries
+            if new_entries:
+                self._insert_sorted_entries(new_entries)
+            self._finish_loading()
+            return
+        except Exception as e:
+            # Handle any errors during loading
+            logger.error(f"Error during directory loading: {e}", exc_info=True)
+            self._cancel_loading()
+            self.loading_complete.emit()
+            return
+        
+        # Insert new entries in sorted order
+        if new_entries:
+            self._insert_sorted_entries(new_entries)
+    
+    def _insert_sorted_entries(self, new_entries: List[FileEntry]):
+        """Insert entries in their sorted position."""
+        for entry in new_entries:
+            # Find insertion position using binary search
+            insert_pos = self._find_insert_position(entry)
+            
+            # Insert the entry
+            self.beginInsertRows(QModelIndex(), insert_pos, insert_pos)
+            self.entries.insert(insert_pos, entry)
+            self.endInsertRows()
+    
+    def _find_insert_position(self, entry: FileEntry) -> int:
+        """
+        Find the position to insert an entry to maintain sorted order.
+        Sort key: directories first, then by name (case-insensitive).
+        """
+        # Helper class for bisect to work with our sort key
+        class KeyWrapper:
+            def __init__(self, iterable, key):
+                self.it = iterable
+                self.key = key
+            
+            def __getitem__(self, i):
+                return self.key(self.it[i])
+            
+            def __len__(self):
+                return len(self.it)
+        
+        # Create a key for the entry we're inserting
+        entry_key = (not entry.is_dir, entry.name.lower())
+        
+        # Use bisect to find the insertion position
+        wrapped = KeyWrapper(self.entries, lambda e: (not e.is_dir, e.name.lower()))
+        return bisect.bisect_left(wrapped, entry_key)
+    
+    def _finish_loading(self):
+        """Finish the loading process."""
+        # Stop the timer and clear the generator
+        if self._loading_timer is not None:
+            self._loading_timer.stop()
+            self._loading_timer = None
+        self._loading_generator = None
+        self._temp_entries = []
+        
+        self.loading_complete.emit()
+    
+    def _cancel_loading(self):
+        """Cancel ongoing loading operation."""
+        if self._loading_timer is not None:
+            self._loading_timer.stop()
+            self._loading_timer = None
+        self._loading_generator = None
+        self._temp_entries = []
     
     def rowCount(self, parent=QModelIndex()) -> int:
         """Return number of rows."""
