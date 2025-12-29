@@ -19,15 +19,35 @@ git clone https://github.com/keith-hall/filer.git
 cd filer
 ```
 
-2. Install dependencies:
+2. Install [uv](https://docs.astral.sh/uv/) (if not already installed):
 ```bash
-pip install -r requirements.txt
+# On macOS and Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# On Windows
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# Or via pip
+pip install uv
 ```
+
+3. The dependencies will be automatically installed when you run the application.
 
 ## Usage
 
 Run the application:
 ```bash
+uv run python main.py
+```
+
+Alternatively, you can activate the virtual environment and run directly:
+```bash
+# Activate the virtual environment
+source .venv/bin/activate  # On macOS/Linux
+# or
+.venv\Scripts\activate  # On Windows
+
+# Run the application
 python main.py
 ```
 
