@@ -9,6 +9,7 @@ A modern, cross-platform GUI file manager built with Python and Qt, inspired by 
 - **Command Palette**: Quick access to commands with Ctrl+Shift+P (Sublime Text style)
 - **Sortable Columns**: Click column headers to sort by name, size, type, or modified date
 - **Keyboard Navigation**: Navigate efficiently with keyboard shortcuts
+- **Auto-Refresh**: Automatically detects and displays file system changes in real-time
 - **Cross-Platform**: Works on Windows, macOS, and Linux
 
 ## Installation

@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, 
     QTableView, QHeaderView, QPushButton, QLabel
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QModelIndex
+from PyQt6.QtCore import Qt, pyqtSignal, QModelIndex, QTimer
 from PyQt6.QtGui import QKeyEvent
 
 from ..backend.filesystem import FileSystemBackend
@@ -24,6 +24,13 @@ class FilePane(QWidget):
         super().__init__(parent)
         self.backend = FileSystemBackend(initial_path)
         self.file_watcher = FileSystemWatcher(self)
+        
+        # Debounce timer for file system events to avoid rapid refreshes
+        self.refresh_timer = QTimer(self)
+        self.refresh_timer.setSingleShot(True)
+        self.refresh_timer.setInterval(200)  # 200ms debounce
+        self.refresh_timer.timeout.connect(self.refresh)
+        
         self.init_ui()
         self.setup_file_watcher()
     
@@ -156,23 +163,28 @@ class FilePane(QWidget):
         """Handle file/directory added event from file watcher."""
         # Only refresh if the added file is in the current directory
         if path.parent == self.backend.get_current_path():
-            self.refresh()
+            self.schedule_refresh()
     
     def on_file_removed(self, path: Path):
         """Handle file/directory removed event from file watcher."""
         # Only refresh if the removed file was in the current directory
         if path.parent == self.backend.get_current_path():
-            self.refresh()
+            self.schedule_refresh()
     
     def on_file_modified(self, path: Path):
         """Handle file modified event from file watcher."""
         # Only refresh if the modified file is in the current directory
         if path.parent == self.backend.get_current_path():
-            self.refresh()
+            self.schedule_refresh()
     
     def on_file_moved(self, from_path: Path, to_path: Path):
         """Handle file/directory moved event from file watcher."""
         current_dir = self.backend.get_current_path()
         # Refresh if either source or destination is in current directory
         if from_path.parent == current_dir or to_path.parent == current_dir:
-            self.refresh()
+            self.schedule_refresh()
+    
+    def schedule_refresh(self):
+        """Schedule a refresh with debouncing to avoid rapid successive refreshes."""
+        # Restart the timer - this effectively debounces multiple rapid events
+        self.refresh_timer.start()
