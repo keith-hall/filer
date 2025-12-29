@@ -11,6 +11,7 @@ from PyQt6.QtGui import QKeyEvent
 
 from ..backend.filesystem import FileSystemBackend
 from ..backend.models import FileListModel
+from ..backend.file_watcher import FileSystemWatcher
 
 
 class FilePane(QWidget):
@@ -22,7 +23,9 @@ class FilePane(QWidget):
     def __init__(self, initial_path: Path = None, parent=None):
         super().__init__(parent)
         self.backend = FileSystemBackend(initial_path)
+        self.file_watcher = FileSystemWatcher(self)
         self.init_ui()
+        self.setup_file_watcher()
     
     def init_ui(self):
         """Initialize the user interface."""
@@ -79,12 +82,26 @@ class FilePane(QWidget):
         # Connect loading complete signal
         self.model.loading_complete.connect(self.update_status)
     
+    def setup_file_watcher(self):
+        """Setup file system watcher and connect signals."""
+        # Connect file watcher signals to handlers
+        self.file_watcher.file_added.connect(self.on_file_added)
+        self.file_watcher.file_removed.connect(self.on_file_removed)
+        self.file_watcher.file_modified.connect(self.on_file_modified)
+        self.file_watcher.file_moved.connect(self.on_file_moved)
+        
+        # Start watching current directory
+        self.file_watcher.watch_directory(self.backend.get_current_path())
+    
     def refresh(self):
         """Refresh the file list using streaming mode."""
         self.model.refresh_streaming()
         self.path_edit.setText(str(self.backend.get_current_path()))
         self.update_status()
         self.directory_changed.emit(self.backend.get_current_path())
+        
+        # Update file watcher to watch the new directory
+        self.file_watcher.watch_directory(self.backend.get_current_path())
     
     def update_status(self):
         """Update status label with file count."""
@@ -134,3 +151,28 @@ class FilePane(QWidget):
                 self.on_item_double_clicked(index)
         else:
             super().keyPressEvent(event)
+    
+    def on_file_added(self, path: Path):
+        """Handle file/directory added event from file watcher."""
+        # Only refresh if the added file is in the current directory
+        if path.parent == self.backend.get_current_path():
+            self.refresh()
+    
+    def on_file_removed(self, path: Path):
+        """Handle file/directory removed event from file watcher."""
+        # Only refresh if the removed file was in the current directory
+        if path.parent == self.backend.get_current_path():
+            self.refresh()
+    
+    def on_file_modified(self, path: Path):
+        """Handle file modified event from file watcher."""
+        # Only refresh if the modified file is in the current directory
+        if path.parent == self.backend.get_current_path():
+            self.refresh()
+    
+    def on_file_moved(self, from_path: Path, to_path: Path):
+        """Handle file/directory moved event from file watcher."""
+        current_dir = self.backend.get_current_path()
+        # Refresh if either source or destination is in current directory
+        if from_path.parent == current_dir or to_path.parent == current_dir:
+            self.refresh()
