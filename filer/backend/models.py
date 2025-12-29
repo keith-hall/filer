@@ -233,3 +233,134 @@ class FileListModel(QAbstractTableModel):
             self.entries.sort(key=lambda e: (not e.is_dir, e.modified_time), reverse=reverse)
         
         self.endResetModel()
+    
+    def add_entry(self, path: Path) -> bool:
+        """
+        Add a single entry to the model incrementally.
+        
+        Args:
+            path: Path to the file/directory to add
+            
+        Returns:
+            True if entry was added, False if it already exists or path is invalid
+        """
+        try:
+            # Check if entry already exists
+            if any(e.path == path for e in self.entries):
+                logger.debug(f"Entry already exists: {path}")
+                return False
+            
+            # Create new entry
+            entry = FileEntry(path)
+            
+            # Insert in sorted order
+            self._insert_sorted_entries([entry])
+            logger.debug(f"Added entry: {path}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to add entry {path}: {e}", exc_info=True)
+            return False
+    
+    def remove_entry(self, path: Path) -> bool:
+        """
+        Remove a single entry from the model incrementally.
+        
+        Args:
+            path: Path to the file/directory to remove
+            
+        Returns:
+            True if entry was removed, False if not found
+        """
+        try:
+            # Find the entry
+            for i, entry in enumerate(self.entries):
+                if entry.path == path:
+                    # Remove the entry
+                    self.beginRemoveRows(QModelIndex(), i, i)
+                    self.entries.pop(i)
+                    self.endRemoveRows()
+                    logger.debug(f"Removed entry: {path}")
+                    return True
+            
+            logger.debug(f"Entry not found for removal: {path}")
+            return False
+            
+        except Exception as e:
+            logger.error(f"Failed to remove entry {path}: {e}", exc_info=True)
+            return False
+    
+    def update_entry(self, path: Path) -> bool:
+        """
+        Update a single entry in the model incrementally.
+        
+        This refreshes the metadata (size, modified time) for an existing entry.
+        
+        Args:
+            path: Path to the file/directory to update
+            
+        Returns:
+            True if entry was updated, False if not found
+        """
+        try:
+            # Find the entry
+            for i, entry in enumerate(self.entries):
+                if entry.path == path:
+                    # Clear the stat cache to force reload
+                    entry._stat_cache = None
+                    
+                    # Emit dataChanged signal for the row
+                    top_left = self.index(i, 0)
+                    bottom_right = self.index(i, self.columnCount() - 1)
+                    self.dataChanged.emit(top_left, bottom_right)
+                    logger.debug(f"Updated entry: {path}")
+                    return True
+            
+            logger.debug(f"Entry not found for update: {path}")
+            return False
+            
+        except Exception as e:
+            logger.error(f"Failed to update entry {path}: {e}", exc_info=True)
+            return False
+    
+    def move_entry(self, from_path: Path, to_path: Path) -> bool:
+        """
+        Handle a file/directory move/rename incrementally.
+        
+        Args:
+            from_path: Original path
+            to_path: New path
+            
+        Returns:
+            True if move was handled successfully
+        """
+        try:
+            # If both paths are in the same directory (rename or move within), update in place
+            if from_path.parent == to_path.parent:
+                # Find and update the entry
+                for i, entry in enumerate(self.entries):
+                    if entry.path == from_path:
+                        # Remove old entry
+                        self.beginRemoveRows(QModelIndex(), i, i)
+                        self.entries.pop(i)
+                        self.endRemoveRows()
+                        
+                        # Add new entry in sorted position
+                        new_entry = FileEntry(to_path)
+                        self._insert_sorted_entries([new_entry])
+                        logger.debug(f"Moved entry: {from_path} -> {to_path}")
+                        return True
+                
+                # Entry not found, might be a new file moving in
+                return self.add_entry(to_path)
+            else:
+                # Moving between directories - both operations must succeed
+                removed = self.remove_entry(from_path)
+                added = self.add_entry(to_path)
+                # For cross-directory moves, we want both to succeed
+                # But if source doesn't exist, it's still okay if we add the destination
+                return (removed or not any(e.path == from_path for e in self.entries)) and added
+                
+        except Exception as e:
+            logger.error(f"Failed to move entry {from_path} -> {to_path}: {e}", exc_info=True)
+            return False
