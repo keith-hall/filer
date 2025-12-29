@@ -31,7 +31,7 @@ class FileListModel(QAbstractTableModel):
         self._loading_generator: Optional[Generator[FileEntry, None, None]] = None
         self._loading_timer: Optional[QTimer] = None
         self._temp_entries: List[FileEntry] = []
-        self.refresh()
+        self.refresh_streaming()  # Use streaming by default
     
     def refresh(self):
         """Refresh the file list from backend."""
