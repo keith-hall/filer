@@ -1,6 +1,7 @@
 """
 File pane widget for displaying directory contents.
 """
+import logging
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, 
@@ -12,6 +13,8 @@ from PyQt6.QtGui import QKeyEvent
 from ..backend.filesystem import FileSystemBackend
 from ..backend.models import FileListModel
 from ..backend.file_watcher import FileSystemWatcher
+
+logger = logging.getLogger(__name__)
 
 
 class FilePane(QWidget):
@@ -25,11 +28,11 @@ class FilePane(QWidget):
         self.backend = FileSystemBackend(initial_path)
         self.file_watcher = FileSystemWatcher(self)
         
-        # Debounce timer for file system events to avoid rapid refreshes
-        self.refresh_timer = QTimer(self)
-        self.refresh_timer.setSingleShot(True)
-        self.refresh_timer.setInterval(200)  # 200ms debounce
-        self.refresh_timer.timeout.connect(self.refresh)
+        # Background validation timer - validates incremental changes with full refresh
+        self.validation_timer = QTimer(self)
+        self.validation_timer.setSingleShot(True)
+        self.validation_timer.setInterval(2000)  # 2 second delay for background validation
+        self.validation_timer.timeout.connect(self._background_validation)
         
         self.init_ui()
         self.setup_file_watcher()
@@ -161,30 +164,91 @@ class FilePane(QWidget):
     
     def on_file_added(self, path: Path):
         """Handle file/directory added event from file watcher."""
-        # Only refresh if the added file is in the current directory
+        # Only handle if the added file is in the current directory
         if path.parent == self.backend.get_current_path():
-            self.schedule_refresh()
+            # Immediate incremental update
+            self.model.add_entry(path)
+            self.update_status()
+            # Schedule background validation
+            self.validation_timer.start()
     
     def on_file_removed(self, path: Path):
         """Handle file/directory removed event from file watcher."""
-        # Only refresh if the removed file was in the current directory
+        # Only handle if the removed file was in the current directory
         if path.parent == self.backend.get_current_path():
-            self.schedule_refresh()
+            # Immediate incremental update
+            self.model.remove_entry(path)
+            self.update_status()
+            # Schedule background validation
+            self.validation_timer.start()
     
     def on_file_modified(self, path: Path):
         """Handle file modified event from file watcher."""
-        # Only refresh if the modified file is in the current directory
+        # Only handle if the modified file is in the current directory
         if path.parent == self.backend.get_current_path():
-            self.schedule_refresh()
+            # Immediate incremental update
+            self.model.update_entry(path)
+            # Schedule background validation
+            self.validation_timer.start()
     
     def on_file_moved(self, from_path: Path, to_path: Path):
         """Handle file/directory moved event from file watcher."""
         current_dir = self.backend.get_current_path()
-        # Refresh if either source or destination is in current directory
-        if from_path.parent == current_dir or to_path.parent == current_dir:
-            self.schedule_refresh()
+        # Handle if either source or destination is in current directory
+        if from_path.parent == current_dir and to_path.parent == current_dir:
+            # Rename within same directory
+            self.model.move_entry(from_path, to_path)
+            self.update_status()
+            # Schedule background validation
+            self.validation_timer.start()
+        elif from_path.parent == current_dir:
+            # Moved out of current directory
+            self.model.remove_entry(from_path)
+            self.update_status()
+            # Schedule background validation
+            self.validation_timer.start()
+        elif to_path.parent == current_dir:
+            # Moved into current directory
+            self.model.add_entry(to_path)
+            self.update_status()
+            # Schedule background validation
+            self.validation_timer.start()
+    
+    def _background_validation(self):
+        """
+        Perform background validation of incremental changes.
+        
+        Compares the current model state with actual filesystem and corrects
+        any discrepancies without showing loading indicator.
+        """
+        try:
+            # Get actual directory contents
+            actual_entries = self.backend.list_directory()
+            actual_paths = {entry.path for entry in actual_entries}
+            current_paths = {entry.path for entry in self.model.entries}
+            
+            # Find differences
+            missing = actual_paths - current_paths
+            extra = current_paths - actual_paths
+            
+            # Add missing entries
+            for entry in actual_entries:
+                if entry.path in missing:
+                    self.model.add_entry(entry.path)
+            
+            # Remove extra entries
+            for path in extra:
+                self.model.remove_entry(path)
+            
+            # Update status if there were discrepancies
+            if missing or extra:
+                self.update_status()
+                
+        except Exception as e:
+            # On error, do a full refresh to ensure consistency
+            logger.error(f"Background validation failed: {e}", exc_info=True)
+            self.refresh()
     
     def schedule_refresh(self):
-        """Schedule a refresh with debouncing to avoid rapid successive refreshes."""
-        # Restart the timer - this effectively debounces multiple rapid events
-        self.refresh_timer.start()
+        """Schedule a full refresh (kept for compatibility but not used by watcher)."""
+        self.refresh()
