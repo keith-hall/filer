@@ -48,7 +48,8 @@ class FileListModel(QAbstractTableModel):
         
         This method initiates a streaming refresh that progressively adds
         entries to the model as they are discovered, providing better
-        responsiveness for large directories.
+        responsiveness for large directories. Entries are inserted in
+        sorted order as they arrive.
         """
         # Cancel any ongoing loading
         self._cancel_loading()
@@ -77,35 +78,71 @@ class FileListModel(QAbstractTableModel):
         # Process multiple entries per timer tick for better performance
         batch_size = 50  # Adjust based on performance needs
         
+        new_entries = []
         try:
             for _ in range(batch_size):
                 entry = next(self._loading_generator)
-                self._temp_entries.append(entry)
+                new_entries.append(entry)
         except StopIteration:
             # Finished loading all entries
+            if new_entries:
+                self._insert_sorted_entries(new_entries)
             self._finish_loading()
+            return
         except Exception as e:
             # Handle any errors during loading
             self._cancel_loading()
             print(f"Error during directory loading: {e}")
+            return
+        
+        # Insert new entries in sorted order
+        if new_entries:
+            self._insert_sorted_entries(new_entries)
+    
+    def _insert_sorted_entries(self, new_entries: List[FileEntry]):
+        """Insert entries in their sorted position."""
+        for entry in new_entries:
+            # Find insertion position using binary search
+            insert_pos = self._find_insert_position(entry)
+            
+            # Insert the entry
+            self.beginInsertRows(QModelIndex(), insert_pos, insert_pos)
+            self.entries.insert(insert_pos, entry)
+            self.endInsertRows()
+    
+    def _find_insert_position(self, entry: FileEntry) -> int:
+        """
+        Find the position to insert an entry to maintain sorted order.
+        Sort key: directories first, then by name (case-insensitive).
+        """
+        # Use binary search for efficiency
+        import bisect
+        
+        # Create a key for sorting
+        entry_key = (not entry.is_dir, entry.name.lower())
+        
+        # Find position using bisect
+        left, right = 0, len(self.entries)
+        while left < right:
+            mid = (left + right) // 2
+            mid_entry = self.entries[mid]
+            mid_key = (not mid_entry.is_dir, mid_entry.name.lower())
+            
+            if mid_key < entry_key:
+                left = mid + 1
+            else:
+                right = mid
+        
+        return left
     
     def _finish_loading(self):
-        """Finish the loading process and sort entries."""
-        # Stop the timer and clear the generator (but don't clear temp_entries yet)
+        """Finish the loading process."""
+        # Stop the timer and clear the generator
         if self._loading_timer is not None:
             self._loading_timer.stop()
             self._loading_timer = None
         self._loading_generator = None
-        
-        if self._temp_entries:
-            # Sort entries: directories first, then by name (case-insensitive)
-            self._temp_entries.sort(key=lambda e: (not e.is_dir, e.name.lower()))
-            
-            # Add all sorted entries to the model
-            self.beginInsertRows(QModelIndex(), 0, len(self._temp_entries) - 1)
-            self.entries = self._temp_entries
-            self._temp_entries = []
-            self.endInsertRows()
+        self._temp_entries = []
         
         self.loading_complete.emit()
     
