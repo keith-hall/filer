@@ -335,7 +335,7 @@ class FileListModel(QAbstractTableModel):
             True if move was handled successfully
         """
         try:
-            # If both paths are in the same directory (rename), update in place
+            # If both paths are in the same directory (rename or move within), update in place
             if from_path.parent == to_path.parent:
                 # Find and update the entry
                 for i, entry in enumerate(self.entries):
@@ -354,10 +354,12 @@ class FileListModel(QAbstractTableModel):
                 # Entry not found, might be a new file moving in
                 return self.add_entry(to_path)
             else:
-                # Moving between directories - handle as remove + add
+                # Moving between directories - both operations must succeed
                 removed = self.remove_entry(from_path)
                 added = self.add_entry(to_path)
-                return removed or added
+                # For cross-directory moves, we want both to succeed
+                # But if source doesn't exist, it's still okay if we add the destination
+                return (removed or not any(e.path == from_path for e in self.entries)) and added
                 
         except Exception as e:
             logger.error(f"Failed to move entry {from_path} -> {to_path}: {e}", exc_info=True)
