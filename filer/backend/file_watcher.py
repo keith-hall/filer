@@ -88,8 +88,8 @@ class FileSystemWatcher(QObject, FileSystemEventHandler):
     # FileSystemEventHandler methods
     def on_created(self, event: FileSystemEvent):
         """Handle file/directory creation events."""
-        if not event.is_directory or event.src_path != str(self.watched_path):
-            # Emit signal for files and subdirectories (not the watched dir itself)
+        # Emit signal for files and subdirectories (not the watched dir itself)
+        if event.src_path != str(self.watched_path):
             path = Path(event.src_path)
             logger.debug(f"File created: {path}")
             self.file_added.emit(path)
