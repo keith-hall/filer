@@ -2,6 +2,7 @@
 File pane widget for displaying directory contents.
 """
 from pathlib import Path
+from typing import List
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, 
     QTableView, QHeaderView, QPushButton, QLabel
@@ -51,6 +52,7 @@ class FilePane(QWidget):
         self.file_view.setShowGrid(False)
         self.file_view.setAlternatingRowColors(True)
         self.file_view.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
+        self.file_view.setSelectionMode(QTableView.SelectionMode.ExtendedSelection)
         self.file_view.setSortingEnabled(True)
         self.file_view.verticalHeader().setVisible(False)
         
@@ -123,6 +125,16 @@ class FilePane(QWidget):
     def get_current_path(self) -> Path:
         """Get current directory path."""
         return self.backend.get_current_path()
+    
+    def get_selected_files(self) -> List[Path]:
+        """Get list of selected file paths."""
+        selected_indexes = self.file_view.selectionModel().selectedRows()
+        selected_files = []
+        for index in selected_indexes:
+            entry = self.model.get_entry(index)
+            if entry:
+                selected_files.append(entry.path)
+        return selected_files
     
     def keyPressEvent(self, event: QKeyEvent):
         """Handle key press events."""
