@@ -5,7 +5,7 @@ Provides clean abstraction for file system operations.
 import os
 import shutil
 from pathlib import Path
-from typing import List, Optional, Dict, Any, Generator, Tuple
+from typing import List, Optional, Dict, Generator, Tuple
 from datetime import datetime
 from enum import Enum
 
@@ -180,10 +180,18 @@ class FileConflict:
     def __init__(self, source: Path, destination: Path):
         self.source = source
         self.destination = destination
-        self.source_size = source.stat().st_size if source.exists() else 0
-        self.dest_size = destination.stat().st_size if destination.exists() else 0
-        self.source_modified = datetime.fromtimestamp(source.stat().st_mtime) if source.exists() else None
-        self.dest_modified = datetime.fromtimestamp(destination.stat().st_mtime) if destination.exists() else None
+        
+        # Cache stat results to avoid redundant filesystem operations
+        source_exists = source.exists()
+        dest_exists = destination.exists()
+        
+        source_stat = source.stat() if source_exists else None
+        dest_stat = destination.stat() if dest_exists else None
+        
+        self.source_size = source_stat.st_size if source_stat else 0
+        self.dest_size = dest_stat.st_size if dest_stat else 0
+        self.source_modified = datetime.fromtimestamp(source_stat.st_mtime) if source_stat else None
+        self.dest_modified = datetime.fromtimestamp(dest_stat.st_mtime) if dest_stat else None
 
 
 class FileOperations:
@@ -217,7 +225,7 @@ class FileOperations:
     def copy_files(
         sources: List[Path],
         destination_dir: Path,
-        conflict_resolutions: Optional[Dict[str, ConflictResolution]] = None,
+        conflict_resolutions: Optional[Dict[Path, ConflictResolution]] = None,
         default_resolution: ConflictResolution = ConflictResolution.SKIP
     ) -> Tuple[int, int, List[str]]:
         """
@@ -226,7 +234,7 @@ class FileOperations:
         Args:
             sources: List of source paths to copy
             destination_dir: Destination directory
-            conflict_resolutions: Dict mapping source file names to their resolution
+            conflict_resolutions: Dict mapping source paths to their resolution
             default_resolution: Default resolution for unspecified conflicts
             
         Returns:
@@ -246,7 +254,7 @@ class FileOperations:
                 continue
             
             dest_path = destination_dir / source.name
-            resolution = conflict_resolutions.get(source.name, default_resolution)
+            resolution = conflict_resolutions.get(source, default_resolution)
             
             # Handle conflicts
             if dest_path.exists():
@@ -283,7 +291,7 @@ class FileOperations:
     def move_files(
         sources: List[Path],
         destination_dir: Path,
-        conflict_resolutions: Optional[Dict[str, ConflictResolution]] = None,
+        conflict_resolutions: Optional[Dict[Path, ConflictResolution]] = None,
         default_resolution: ConflictResolution = ConflictResolution.SKIP
     ) -> Tuple[int, int, List[str]]:
         """
@@ -292,7 +300,7 @@ class FileOperations:
         Args:
             sources: List of source paths to move
             destination_dir: Destination directory
-            conflict_resolutions: Dict mapping source file names to their resolution
+            conflict_resolutions: Dict mapping source paths to their resolution
             default_resolution: Default resolution for unspecified conflicts
             
         Returns:
@@ -312,7 +320,7 @@ class FileOperations:
                 continue
             
             dest_path = destination_dir / source.name
-            resolution = conflict_resolutions.get(source.name, default_resolution)
+            resolution = conflict_resolutions.get(source, default_resolution)
             
             # Handle conflicts
             if dest_path.exists():

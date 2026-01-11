@@ -19,6 +19,9 @@ from ..backend.filesystem import FileOperations, ConflictResolution
 class MainWindow(QMainWindow):
     """Main application window."""
     
+    # Maximum number of errors to display in error dialog
+    MAX_ERRORS_DISPLAYED = 10
+    
     def __init__(self):
         super().__init__()
         self.settings = QSettings("Filer", "FileManager")
@@ -340,9 +343,9 @@ class MainWindow(QMainWindow):
             if errors:
                 message += f", {len(errors)} errors"
                 # Show errors in a message box
-                error_msg = "\n".join(errors[:10])  # Show first 10 errors
-                if len(errors) > 10:
-                    error_msg += f"\n... and {len(errors) - 10} more errors"
+                error_msg = "\n".join(errors[:self.MAX_ERRORS_DISPLAYED])
+                if len(errors) > self.MAX_ERRORS_DISPLAYED:
+                    error_msg += f"\n... and {len(errors) - self.MAX_ERRORS_DISPLAYED} more errors"
                 QMessageBox.warning(self, "Operation Errors", error_msg)
             
             self.statusBar().showMessage(message, 5000)

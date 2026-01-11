@@ -20,7 +20,7 @@ class ConflictDialog(QDialog):
         super().__init__(parent)
         self.conflicts = conflicts
         self.operation = operation
-        self.resolutions: Dict[str, ConflictResolution] = {}
+        self.resolutions: Dict[Path, ConflictResolution] = {}
         self.default_resolution: ConflictResolution = ConflictResolution.SKIP
         self.current_index = 0
         self.apply_to_all = False
@@ -166,7 +166,7 @@ class ConflictDialog(QDialog):
         # Save current resolution
         conflict = self.conflicts[self.current_index]
         resolution = self.get_current_resolution()
-        self.resolutions[conflict.source.name] = resolution
+        self.resolutions[conflict.source] = resolution
         
         # Check if apply to all is selected
         if self.apply_to_all_checkbox.isChecked():
@@ -174,7 +174,7 @@ class ConflictDialog(QDialog):
             self.default_resolution = resolution
             # Apply to all remaining conflicts
             for i in range(self.current_index + 1, len(self.conflicts)):
-                self.resolutions[self.conflicts[i].source.name] = resolution
+                self.resolutions[self.conflicts[i].source] = resolution
             self.accept()
             return
         
@@ -193,7 +193,7 @@ class ConflictDialog(QDialog):
         # Save current resolution
         conflict = self.conflicts[self.current_index]
         resolution = self.get_current_resolution()
-        self.resolutions[conflict.source.name] = resolution
+        self.resolutions[conflict.source] = resolution
         
         # Check if apply to all is selected
         if self.apply_to_all_checkbox.isChecked():
@@ -201,7 +201,7 @@ class ConflictDialog(QDialog):
             self.default_resolution = resolution
             # Apply to all remaining conflicts
             for i in range(self.current_index + 1, len(self.conflicts)):
-                self.resolutions[self.conflicts[i].source.name] = resolution
+                self.resolutions[self.conflicts[i].source] = resolution
         
         self.accept()
     
@@ -209,9 +209,9 @@ class ConflictDialog(QDialog):
         """Skip all conflicts."""
         self.default_resolution = ConflictResolution.SKIP
         for conflict in self.conflicts:
-            self.resolutions[conflict.source.name] = ConflictResolution.SKIP
+            self.resolutions[conflict.source] = ConflictResolution.SKIP
         self.accept()
     
-    def get_resolutions(self) -> Tuple[Dict[str, ConflictResolution], ConflictResolution]:
+    def get_resolutions(self) -> Tuple[Dict[Path, ConflictResolution], ConflictResolution]:
         """Get the conflict resolutions."""
         return self.resolutions, self.default_resolution
