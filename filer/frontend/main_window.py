@@ -2,6 +2,7 @@
 Main window for the file manager application.
 """
 from pathlib import Path
+from typing import List, Optional
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QToolBar, QPushButton, QSplitter, QMessageBox, QLabel
@@ -11,6 +12,8 @@ from PyQt6.QtGui import QAction, QKeySequence
 
 from .file_pane import FilePane
 from .command_palette import CommandPalette
+from .conflict_dialog import ConflictDialog
+from ..backend.filesystem import FileOperations, ConflictResolution
 
 
 class MainWindow(QMainWindow):
@@ -19,6 +22,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.settings = QSettings("Filer", "FileManager")
+        self.clipboard_files: List[Path] = []
+        self.clipboard_operation: Optional[str] = None  # "copy" or "move"
         self.init_ui()
         self.setup_command_palette()
         self.restore_settings()
@@ -82,6 +87,26 @@ class MainWindow(QMainWindow):
         
         toolbar.addSeparator()
         
+        # Copy action
+        copy_action = QAction("Copy", self)
+        copy_action.setShortcut(QKeySequence("Ctrl+C"))
+        copy_action.triggered.connect(self.copy_selected)
+        toolbar.addAction(copy_action)
+        
+        # Cut/Move action
+        cut_action = QAction("Cut", self)
+        cut_action.setShortcut(QKeySequence("Ctrl+X"))
+        cut_action.triggered.connect(self.cut_selected)
+        toolbar.addAction(cut_action)
+        
+        # Paste action
+        paste_action = QAction("Paste", self)
+        paste_action.setShortcut(QKeySequence("Ctrl+V"))
+        paste_action.triggered.connect(self.paste_files)
+        toolbar.addAction(paste_action)
+        
+        toolbar.addSeparator()
+        
         # Toggle pane layout
         toggle_layout_action = QAction("Single Pane", self)
         toggle_layout_action.setShortcut(QKeySequence("Ctrl+D"))
@@ -118,6 +143,21 @@ class MainWindow(QMainWindow):
             "Toggle Layout",
             "Switch between single and dual pane layout",
             self.toggle_pane_layout
+        )
+        self.command_palette.add_command(
+            "Copy Files",
+            "Copy selected files to clipboard",
+            self.copy_selected
+        )
+        self.command_palette.add_command(
+            "Cut Files",
+            "Cut selected files to clipboard (for moving)",
+            self.cut_selected
+        )
+        self.command_palette.add_command(
+            "Paste Files",
+            "Paste files from clipboard to current directory",
+            self.paste_files
         )
         self.command_palette.add_command(
             "Go to Home",
@@ -214,3 +254,99 @@ class MainWindow(QMainWindow):
         self.settings.setValue("geometry", self.saveGeometry())
         self.settings.setValue("splitter_state", self.splitter.saveState())
         event.accept()
+    
+    def copy_selected(self):
+        """Copy selected files to clipboard."""
+        selected_files = self.active_pane.get_selected_files()
+        if not selected_files:
+            self.statusBar().showMessage("No files selected", 2000)
+            return
+        
+        self.clipboard_files = selected_files
+        self.clipboard_operation = "copy"
+        self.statusBar().showMessage(f"{len(selected_files)} file(s) copied to clipboard", 2000)
+    
+    def cut_selected(self):
+        """Cut selected files to clipboard (for moving)."""
+        selected_files = self.active_pane.get_selected_files()
+        if not selected_files:
+            self.statusBar().showMessage("No files selected", 2000)
+            return
+        
+        self.clipboard_files = selected_files
+        self.clipboard_operation = "move"
+        self.statusBar().showMessage(f"{len(selected_files)} file(s) cut to clipboard", 2000)
+    
+    def paste_files(self):
+        """Paste files from clipboard to current directory."""
+        if not self.clipboard_files:
+            self.statusBar().showMessage("Clipboard is empty", 2000)
+            return
+        
+        if not self.clipboard_operation:
+            self.statusBar().showMessage("No operation specified", 2000)
+            return
+        
+        destination = self.active_pane.get_current_path()
+        
+        # Detect conflicts before proceeding
+        conflicts = FileOperations.detect_conflicts(self.clipboard_files, destination)
+        
+        conflict_resolutions = {}
+        default_resolution = ConflictResolution.SKIP
+        
+        # If there are conflicts, show dialog
+        if conflicts:
+            dialog = ConflictDialog(conflicts, self.clipboard_operation, self)
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                conflict_resolutions, default_resolution = dialog.get_resolutions()
+            else:
+                self.statusBar().showMessage("Operation cancelled", 2000)
+                return
+        
+        # Perform the operation
+        try:
+            if self.clipboard_operation == "copy":
+                successful, skipped, errors = FileOperations.copy_files(
+                    self.clipboard_files,
+                    destination,
+                    conflict_resolutions,
+                    default_resolution
+                )
+                operation_name = "copied"
+            else:  # move
+                successful, skipped, errors = FileOperations.move_files(
+                    self.clipboard_files,
+                    destination,
+                    conflict_resolutions,
+                    default_resolution
+                )
+                operation_name = "moved"
+                # Clear clipboard after move
+                self.clipboard_files = []
+                self.clipboard_operation = None
+            
+            # Refresh both panes
+            self.active_pane.refresh()
+            if self.active_pane == self.left_pane:
+                self.right_pane.refresh()
+            else:
+                self.left_pane.refresh()
+            
+            # Show results
+            message = f"{successful} file(s) {operation_name}"
+            if skipped > 0:
+                message += f", {skipped} skipped"
+            if errors:
+                message += f", {len(errors)} errors"
+                # Show errors in a message box
+                error_msg = "\n".join(errors[:10])  # Show first 10 errors
+                if len(errors) > 10:
+                    error_msg += f"\n... and {len(errors) - 10} more errors"
+                QMessageBox.warning(self, "Operation Errors", error_msg)
+            
+            self.statusBar().showMessage(message, 5000)
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to {self.clipboard_operation} files: {str(e)}")
+            self.statusBar().showMessage(f"Operation failed: {str(e)}", 5000)
