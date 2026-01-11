@@ -2,7 +2,7 @@
 Conflict resolution dialog for file operations.
 """
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
     QPushButton, QListWidget, QListWidgetItem,
@@ -212,6 +212,6 @@ class ConflictDialog(QDialog):
             self.resolutions[conflict.source.name] = ConflictResolution.SKIP
         self.accept()
     
-    def get_resolutions(self) -> tuple[Dict[str, ConflictResolution], ConflictResolution]:
+    def get_resolutions(self) -> Tuple[Dict[str, ConflictResolution], ConflictResolution]:
         """Get the conflict resolutions."""
         return self.resolutions, self.default_resolution

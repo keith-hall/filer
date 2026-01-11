@@ -258,11 +258,19 @@ class FileOperations:
                 elif resolution == ConflictResolution.CANCEL:
                     errors.append(f"Operation cancelled for: {source.name}")
                     break
-                # OVERWRITE will proceed with the copy
+                elif resolution == ConflictResolution.OVERWRITE:
+                    # Remove destination before copying for directories
+                    if dest_path.is_dir():
+                        try:
+                            shutil.rmtree(dest_path)
+                        except Exception as e:
+                            errors.append(f"Failed to remove {dest_path.name}: {str(e)}")
+                            continue
+                    # For files, shutil.copy2 will overwrite automatically
             
             try:
                 if source.is_dir():
-                    shutil.copytree(source, dest_path, dirs_exist_ok=(resolution == ConflictResolution.OVERWRITE))
+                    shutil.copytree(source, dest_path)
                 else:
                     shutil.copy2(source, dest_path)
                 successful += 1

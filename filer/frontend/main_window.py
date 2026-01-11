@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import List, Optional
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QToolBar, QPushButton, QSplitter, QMessageBox, QLabel
+    QToolBar, QPushButton, QSplitter, QMessageBox, QLabel, QDialog
 )
 from PyQt6.QtCore import Qt, QSettings
 from PyQt6.QtGui import QAction, QKeySequence
